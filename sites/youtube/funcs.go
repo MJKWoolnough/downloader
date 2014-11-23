@@ -27,11 +27,11 @@ const (
 
 var (
 	matches = [...]*regexp.Regexp{
-		regexp.MustCompile("^(?:https?://)?(?:www\\.)youtube\\.com/watch?.*v=([[[:word:]]-]{11})(?:&.*)?"),
-		regexp.MustCompile("^(?:https?://)?(?:www\\.)youtube\\.com/v/([[[:word:]]-]{11})(?:\\?.*)?"),
-		regexp.MustCompile("^(?:https?://)?youtu\\.be/([[[:word:]]-]{11})(\\?.*)"),
+		regexp.MustCompile("^(?:https?://)?(?:www\\.)?youtube\\.com/watch?.*v=([a-zA-Z0-9_-]{11})(?:&.*)?$"),
+		regexp.MustCompile("^(?:https?://)?(?:www\\.)?youtube\\.com/v/([a-zA-Z0-9_-]{11})(?:\\?.*)?$"),
+		regexp.MustCompile("^(?:https?://)?youtu\\.be/([a-zA-Z0-9_-]{11})(?:\\?.*)?$"),
 	}
-	codeMatch      = regexp.MustCompile("^[[[:word:]]-]{11}$")
+	codeMatch      = regexp.MustCompile("^[a-zA-Z0-9_-]{11}$")
 	requiredFields = [...]string{
 		fieldTitle,
 		fieldStreamMap,
