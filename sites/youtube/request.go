@@ -17,7 +17,6 @@ import (
 const (
 	fieldTitle        = "title"
 	fieldStreamMap    = "url_encoded_fmt_stream_map"
-	fieldITag         = "itag"
 	fieldQuality      = "quality"
 	fieldURL          = "url"
 	fieldFallbackHost = "fallback_host"
@@ -31,7 +30,6 @@ var (
 		fieldStreamMap,
 	}
 	smRequiredFields = [...]string{
-		fieldITag,
 		fieldQuality,
 		fieldURL,
 		fieldFallbackHost,
@@ -64,7 +62,6 @@ func getYoutubeData(u string) (url.Values, error) {
 }
 
 type stream struct {
-	iTag int
 	quality
 	mime         mimeType
 	url          *url.URL
@@ -98,10 +95,6 @@ func validateStreamData(s string) *stream {
 			return nil
 		}
 	}
-	itag, err := strconv.Atoi(sm[fieldITag][0])
-	if err != nil {
-		return nil
-	}
 	q := parseQuality(sm[fieldQuality][0])
 	if q == qualityUnknown {
 		return nil
@@ -115,7 +108,6 @@ func validateStreamData(s string) *stream {
 		return nil
 	}
 	return &stream{
-		iTag:         itag,
 		quality:      q,
 		mime:         mime,
 		url:          u,
@@ -153,7 +145,7 @@ func streamParser(s *stream, code string) *downloader.Media {
 	}
 	h, _ := phttp.NewHTTP(s.url.String())
 	sources = append(sources, h)
-	uid := fmt.Sprintf("youtube-%s-%d-%d-%d", code, s.iTag, s.quality, s.mime)
+	uid := fmt.Sprintf("youtube-%s-%d-%d", code, s.quality, s.mime)
 	return &downloader.Media{
 		Size:         size,
 		MimeType:     s.mime.String(),
