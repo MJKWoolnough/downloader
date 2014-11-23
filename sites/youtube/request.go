@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/MJKWoolnough/downloader"
+	phttp "github.com/MJKWoolnough/downloader/protocols/http"
 )
 
 var (
