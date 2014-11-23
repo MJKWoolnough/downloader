@@ -1,6 +1,9 @@
 package downloader
 
-import "io"
+import (
+	"io"
+	"time"
+)
 
 type downloader interface {
 	// QuickMatch returns whether or not the downloader recognises the url,
@@ -32,6 +35,9 @@ type Media struct {
 	// versions of the media (different qualities, mimetypes, etc.) should
 	// have a different UID.
 	UID string
+	// LastModified is the last modified time of the media. Set to time.Now()
+	// when undeterminable.
+	LastModified time.Time
 	// Sources represents a list of possible sources for this incarnation
 	// of the media file
 	Sources []io.ReadCloser

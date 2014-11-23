@@ -258,6 +258,9 @@ StreamParseLoop:
 			LastModified: lastModified,
 		})
 	}
+	if len(media) == 0 {
+		return nil, NoStreams{}
+	}
 	return &downloader.Request{
 		Title:       v[fieldTitle][0],
 		Downloaders: media,
