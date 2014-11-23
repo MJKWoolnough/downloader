@@ -46,5 +46,5 @@ type Media struct {
 var downloaders []downloader
 
 func Register(d downloader) {
-	downloaders = append(downloaders, downloader)
+	downloaders = append(downloaders, d)
 }

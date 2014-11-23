@@ -1,9 +1,9 @@
-package yt
+package youtube
 
 import "github.com/MJKWoolnough/downloader"
 
 func init() {
-	downloader.Register(new(YouTube))
+	downloader.Register(new(youtube))
 }
 
 type youtube struct{}
