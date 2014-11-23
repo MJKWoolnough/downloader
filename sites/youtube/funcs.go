@@ -1,7 +1,6 @@
 package youtube
 
 import (
-	"net/url"
 	"regexp"
 	"strings"
 )
@@ -80,31 +79,6 @@ func parseMime(m string) mimeType {
 		return mimeMP4
 	}
 	return mimeUnknown
-}
-
-type stream struct {
-	iTag int
-	quality
-	mime         mimeType
-	url          *url.URL
-	fallbackHost string
-}
-
-type streams []stream
-
-func (s streams) Len() int {
-	return len(s)
-}
-
-func (s streams) Less(i, j int) bool {
-	if s[j].quality == s[i].quality {
-		return s[j].mime < s[i].mime
-	}
-	return s[j].quality < s[i].quality
-}
-
-func (s streams) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
 }
 
 func getCode(text string) string {

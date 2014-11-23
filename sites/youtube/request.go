@@ -14,6 +14,16 @@ import (
 	phttp "github.com/MJKWoolnough/downloader/protocols/http"
 )
 
+const (
+	fieldTitle        = "title"
+	fieldStreamMap    = "url_encoded_fmt_stream_map"
+	fieldITag         = "itag"
+	fieldQuality      = "quality"
+	fieldURL          = "url"
+	fieldFallbackHost = "fallback_host"
+	fieldMime         = "type"
+)
+
 var (
 	videoInfoURL   = "https://www.youtube.com/get_video_info?el=detailpage&videoid="
 	requiredFields = [...]string{
@@ -29,22 +39,8 @@ var (
 	}
 )
 
-const (
-	fieldTitle        = "title"
-	fieldStreamMap    = "url_encoded_fmt_stream_map"
-	fieldITag         = "itag"
-	fieldQuality      = "quality"
-	fieldURL          = "url"
-	fieldFallbackHost = "fallback_host"
-	fieldMime         = "type"
-)
-
-func request(text string) (*downloader.Request, error) {
-	code := getCode(text)
-	if code == "" {
-		return nil, UnknownCode(text)
-	}
-	r, err := http.Get(videoInfoURL + code)
+func getYoutubeData(u string) (url.Values, error) {
+	r, err := http.Get(u)
 	if err != nil {
 		return nil, err
 	}
@@ -64,42 +60,125 @@ func request(text string) (*downloader.Request, error) {
 			return nil, MissingField(field)
 		}
 	}
+	return v, nil
+}
+
+type stream struct {
+	iTag int
+	quality
+	mime         mimeType
+	url          *url.URL
+	fallbackHost string
+}
+
+type streams []*stream
+
+func (s streams) Len() int {
+	return len(s)
+}
+
+func (s streams) Less(i, j int) bool {
+	if s[j].quality == s[i].quality {
+		return s[j].mime < s[i].mime
+	}
+	return s[j].quality < s[i].quality
+}
+
+func (s streams) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func validateStreamData(s string) *stream {
+	sm, err := url.ParseQuery(s)
+	if err != nil {
+		return nil
+	}
+	for _, field := range smRequiredFields {
+		if len(sm[field]) == 0 {
+			return nil
+		}
+	}
+	itag, err := strconv.Atoi(sm[fieldITag][0])
+	if err != nil {
+		return nil
+	}
+	q := parseQuality(sm[fieldQuality][0])
+	if q == qualityUnknown {
+		return nil
+	}
+	mime := parseMime(sm[fieldMime][0])
+	if mime == mimeUnknown {
+		return nil
+	}
+	u, err := url.Parse(sm[fieldURL][0])
+	if err != nil {
+		return nil
+	}
+	return &stream{
+		iTag:         itag,
+		quality:      q,
+		mime:         mime,
+		url:          u,
+		fallbackHost: sm[fieldFallbackHost][0],
+	}
+}
+
+func streamParser(s *stream, code string) *downloader.Media {
+	fallback := false
+	r, err := http.Head(s.url.String())
+	if err != nil {
+		fallback = true
+		s.url.Host = s.fallbackHost
+		r, err = http.Head(s.url.String())
+		if err != nil {
+			return nil
+		}
+	}
+	if r.StatusCode != http.StatusOK {
+		return nil
+	}
+	size, err := strconv.Atoi(r.Header.Get("Content-Length"))
+	if err != nil {
+		return nil
+	}
+	lastModified, err := http.ParseTime(r.Header.Get("Last-Modified"))
+	if err != nil {
+		return nil
+	}
+	sources := make([]io.ReadCloser, 0, 2)
+	if !fallback {
+		h, _ := phttp.NewHTTP(s.url.String())
+		sources = append(sources, h)
+		s.url.Host = s.fallbackHost
+	}
+	h, _ := phttp.NewHTTP(s.url.String())
+	sources = append(sources, h)
+	uid := fmt.Sprintf("youtube-%s-%d-%d-%d", code, s.iTag, s.quality, s.mime)
+	return &downloader.Media{
+		Size:         size,
+		MimeType:     s.mime.String(),
+		UID:          uid,
+		LastModified: lastModified,
+	}
+}
+
+func request(text string) (*downloader.Request, error) {
+	code := getCode(text)
+	if code == "" {
+		return nil, UnknownCode(text)
+	}
+	v, err := getYoutubeData(videoInfoURL + code)
+	if err != nil {
+		return nil, err
+	}
 	streamData := strings.Split(v[fieldStreamMap][0], ",")
 	streamMap := make(streams, 0, len(streamData))
-StreamParseLoop:
 	for _, s := range streamData {
-		sm, err := url.ParseQuery(s)
-		if err != nil {
+		streamInfo := validateStreamData(s)
+		if streamInfo == nil {
 			continue
 		}
-		for _, field := range smRequiredFields {
-			if len(sm[field]) == 0 {
-				continue StreamParseLoop
-			}
-		}
-		itag, err := strconv.Atoi(sm[fieldITag][0])
-		if err != nil {
-			continue
-		}
-		q := parseQuality(sm[fieldQuality][0])
-		if q == qualityUnknown {
-			continue
-		}
-		mime := parseMime(sm[fieldMime][0])
-		if mime == mimeUnknown {
-			continue
-		}
-		u, err := url.Parse(sm[fieldURL][0])
-		if err != nil {
-			continue
-		}
-		streamMap = append(streamMap, stream{
-			iTag:         itag,
-			quality:      q,
-			mime:         mime,
-			url:          u,
-			fallbackHost: sm[fieldFallbackHost][0],
-		})
+		streamMap = append(streamMap, streamInfo)
 	}
 	if len(streamMap) == 0 {
 		return nil, NoStreams{}
@@ -107,42 +186,11 @@ StreamParseLoop:
 	sort.Sort(streamMap)
 	media := make([]downloader.Media, 0, len(streamMap))
 	for _, stream := range streamMap {
-		fallback := false
-		r, err := http.Head(stream.url.String())
-		if err != nil {
-			fallback = true
-			stream.url.Host = stream.fallbackHost
-			r, err = http.Head(stream.url.String())
-			if err != nil {
-				continue
-			}
-		}
-		if r.StatusCode != http.StatusOK {
+		m := streamParser(stream, code)
+		if m == nil {
 			continue
 		}
-		size, err := strconv.Atoi(r.Header.Get("Content-Length"))
-		if err != nil {
-			continue
-		}
-		lastModified, err := http.ParseTime(r.Header.Get("Last-Modified"))
-		if err != nil {
-			continue
-		}
-		sources := make([]io.ReadCloser, 0, 2)
-		if !fallback {
-			h, _ := phttp.NewHTTP(stream.url.String())
-			sources = append(sources, h)
-			stream.url.Host = stream.fallbackHost
-		}
-		h, _ := phttp.NewHTTP(stream.url.String())
-		sources = append(sources, h)
-		uid := fmt.Sprintf("youtube-%s-%d-%d-%d", code, stream.iTag, stream.quality, stream.mime)
-		media = append(media, downloader.Media{
-			Size:         size,
-			MimeType:     stream.mime.String(),
-			UID:          uid,
-			LastModified: lastModified,
-		})
+		media = append(media, *m)
 	}
 	if len(media) == 0 {
 		return nil, NoStreams{}
