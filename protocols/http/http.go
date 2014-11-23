@@ -6,6 +6,7 @@ import (
 	"strconv"
 )
 
+// HTTP turns an http request into a io.ReadCloser.
 type HTTP struct {
 	Client  *http.Client
 	Request *http.Request
@@ -25,6 +26,7 @@ func NewHTTP(url string) (*HTTP, error) {
 	}, nil
 }
 
+// Read is an implementation of io.Reader.
 func (h *HTTP) Read(d []byte) (int, error) {
 	if h.data == nil {
 		r, err := h.Client.Do(h.Request)
@@ -39,6 +41,7 @@ func (h *HTTP) Read(d []byte) (int, error) {
 	return h.data.Read(d)
 }
 
+// Close is an implementation of io.Closer.
 func (h *HTTP) Close() error {
 	if h.data == nil {
 		return nil
@@ -50,6 +53,7 @@ func (h *HTTP) Close() error {
 
 // Errors
 
+// UnexpectedStatus is an error returned when a non-200 status is received.
 type UnexpectedStatus int
 
 func (u UnexpectedStatus) Error() string {

@@ -274,12 +274,11 @@ StreamParseLoop:
 func getCode(text string) string {
 	if codeMatch.MatchString(text) {
 		return text
-	} else {
-		for _, r := range matches {
-			s := r.FindStringSubmatch(text)
-			if len(s) == 2 {
-				return s[1]
-			}
+	}
+	for _, r := range matches {
+		s := r.FindStringSubmatch(text)
+		if len(s) == 2 {
+			return s[1]
 		}
 	}
 	return ""
@@ -287,18 +286,23 @@ func getCode(text string) string {
 
 // Errors
 
+// UnknownCode is an error returned when no youtube identifier is found.
 type UnknownCode string
 
 func (u UnknownCode) Error() string {
 	return "could not find youtube identifier: " + string(u)
 }
 
+// MissingField is an error that is returned when a required field is missing
+// from the data gathered from the youtube servers.
 type MissingField string
 
 func (m MissingField) Error() string {
 	return "could not find required field: " + string(m)
 }
 
+// NoStreams is an error returned when no valid streams could be found for a
+// URL.
 type NoStreams struct{}
 
 func (NoStreams) Error() string {

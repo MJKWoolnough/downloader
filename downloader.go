@@ -18,14 +18,17 @@ type downloader interface {
 	Request(string) (*Request, error)
 }
 
+// Request is a value returned by a downloader and contains all of the
+// necessary information to download a particular file.
 type Request struct {
-	// Title is the title of the video, if it has one.
+	// Title is the title of the media, if it has one.
 	Title string
 	// Downloaders a a list of ReadClosers that all represented the requested
 	// media.
 	Downloaders []Media
 }
 
+// Media contains information about a particular version of a file.
 type Media struct {
 	// Size is the length, in bytes, of the requested media.
 	Size int
@@ -45,6 +48,7 @@ type Media struct {
 
 var downloaders []downloader
 
+// Register allows packages to register a downloader.
 func Register(d downloader) {
 	downloaders = append(downloaders, d)
 }

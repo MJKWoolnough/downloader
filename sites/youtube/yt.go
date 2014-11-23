@@ -1,3 +1,6 @@
+// +build !testing
+
+// Package youtube implements a Youtube downloader
 package youtube
 
 import "github.com/MJKWoolnough/downloader"
