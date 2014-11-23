@@ -1,20 +1,9 @@
 package youtube
 
 import (
-	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
-)
-
-const (
-	fieldTitle        = "title"
-	fieldStreamMap    = "url_encoded_fmt_stream_map"
-	fieldITag         = "itag"
-	fieldQuality      = "quality"
-	fieldURL          = "url"
-	fieldFallbackHost = "fallback_host"
-	fieldMime         = "type"
 )
 
 var (
@@ -23,18 +12,7 @@ var (
 		regexp.MustCompile("^(?:https?://)?(?:www\\.)?youtube\\.com/v/([a-zA-Z0-9_-]{11})(?:\\?.*)?$"),
 		regexp.MustCompile("^(?:https?://)?youtu\\.be/([a-zA-Z0-9_-]{11})(?:\\?.*)?$"),
 	}
-	codeMatch      = regexp.MustCompile("^[a-zA-Z0-9_-]{11}$")
-	requiredFields = [...]string{
-		fieldTitle,
-		fieldStreamMap,
-	}
-	smRequiredFields = [...]string{
-		fieldITag,
-		fieldQuality,
-		fieldURL,
-		fieldFallbackHost,
-		fieldMime,
-	}
+	codeMatch = regexp.MustCompile("^[a-zA-Z0-9_-]{11}$")
 )
 
 type quality int
@@ -104,26 +82,6 @@ func parseMime(m string) mimeType {
 	return mimeUnknown
 }
 
-var videoInfoURL = "https://www.youtube.com/get_video_info?el=detailpage&videoid="
-
-func quickMatch(text string) bool {
-	for _, r := range matches {
-		if r.MatchString(text) {
-			return true
-		}
-	}
-	return false
-}
-
-func match(text string) bool {
-	code := getCode(text)
-	if code != "" {
-		r, _ := http.Head(videoInfoURL + code)
-		return r.StatusCode == http.StatusOK
-	}
-	return false
-}
-
 type stream struct {
 	iTag int
 	quality
@@ -160,29 +118,4 @@ func getCode(text string) string {
 		}
 	}
 	return ""
-}
-
-// Errors
-
-// UnknownCode is an error returned when no youtube identifier is found.
-type UnknownCode string
-
-func (u UnknownCode) Error() string {
-	return "could not find youtube identifier: " + string(u)
-}
-
-// MissingField is an error that is returned when a required field is missing
-// from the data gathered from the youtube servers.
-type MissingField string
-
-func (m MissingField) Error() string {
-	return "could not find required field: " + string(m)
-}
-
-// NoStreams is an error returned when no valid streams could be found for a
-// URL.
-type NoStreams struct{}
-
-func (NoStreams) Error() string {
-	return "no valid streams found"
 }

@@ -13,6 +13,31 @@ import (
 	"github.com/MJKWoolnough/downloader"
 )
 
+var (
+	videoInfoURL   = "https://www.youtube.com/get_video_info?el=detailpage&videoid="
+	requiredFields = [...]string{
+		fieldTitle,
+		fieldStreamMap,
+	}
+	smRequiredFields = [...]string{
+		fieldITag,
+		fieldQuality,
+		fieldURL,
+		fieldFallbackHost,
+		fieldMime,
+	}
+)
+
+const (
+	fieldTitle        = "title"
+	fieldStreamMap    = "url_encoded_fmt_stream_map"
+	fieldITag         = "itag"
+	fieldQuality      = "quality"
+	fieldURL          = "url"
+	fieldFallbackHost = "fallback_host"
+	fieldMime         = "type"
+)
+
 func request(text string) (*downloader.Request, error) {
 	code := getCode(text)
 	if code == "" {
@@ -125,4 +150,29 @@ StreamParseLoop:
 		Title:       v[fieldTitle][0],
 		Downloaders: media,
 	}, nil
+}
+
+// Errors
+
+// UnknownCode is an error returned when no youtube identifier is found.
+type UnknownCode string
+
+func (u UnknownCode) Error() string {
+	return "could not find youtube identifier: " + string(u)
+}
+
+// MissingField is an error that is returned when a required field is missing
+// from the data gathered from the youtube servers.
+type MissingField string
+
+func (m MissingField) Error() string {
+	return "could not find required field: " + string(m)
+}
+
+// NoStreams is an error returned when no valid streams could be found for a
+// URL.
+type NoStreams struct{}
+
+func (NoStreams) Error() string {
+	return "no valid streams found"
 }
