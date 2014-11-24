@@ -52,3 +52,25 @@ var downloaders []downloader
 func Register(d downloader) {
 	downloaders = append(downloaders, d)
 }
+
+func DoRequest(url string) (*Request, error) {
+	for _, downloader := range downloaders {
+		if downloader.QuickMatch(url) {
+			return downloader.Request(url)
+		}
+	}
+	for _, downloader := range downloaders {
+		if downloader.Match(url) {
+			return downloader.Request(url)
+		}
+	}
+	return nil, NoRequest{}
+}
+
+// Errors
+
+type NoRequest struct{}
+
+func (NoRequest) Error() string {
+	return "no matching request found"
+}
