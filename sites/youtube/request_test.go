@@ -61,10 +61,18 @@ func TestValidataStreamData(t *testing.T) {
 	tests := []struct {
 		data    string
 		success bool
-	}{}
+	}{
+		{"", false},
+		{urlValues(fieldQuality + "=highres").Encode(), false},
+		{urlValues(fieldQuality+"=highres", fieldMime+"=video/webm").Encode(), false},
+		{urlValues(fieldQuality+"=highres", fieldMime+"=video/webm", fieldURL+"=http://www.youtube.com/").Encode(), false},
+		{urlValues(fieldQuality+"=highres", fieldMime+"=video/webm", fieldURL+"=http://www.youtube.com/", fieldFallbackHost+"=google.com").Encode(), true},
+		{urlValues(fieldQuality+"=unknown", fieldMime+"=video/webm", fieldURL+"=http://www.youtube.com/", fieldFallbackHost+"=google.com").Encode(), false},
+		{urlValues(fieldQuality+"=highres", fieldMime+"=video/unknown", fieldURL+"=http://www.youtube.com/", fieldFallbackHost+"=google.com").Encode(), false},
+	}
 
 	for n, test := range tests {
-		if (validateStreamData(test.data) == nil) != test.success {
+		if (validateStreamData(test.data) == nil) == test.success {
 			t.Errorf("test %d: expecting sucess %v, got %v", n+1, test.success, !test.success)
 		}
 	}
