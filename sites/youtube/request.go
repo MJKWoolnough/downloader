@@ -23,7 +23,7 @@ const (
 )
 
 var (
-	videoInfoURL   = "https://www.youtube.com/get_video_info?el=detailpage&videoid="
+	videoInfoURL   = "https://www.youtube.com/get_video_info?el=detailpage&video_id="
 	requiredFields = [...]string{
 		fieldTitle,
 		fieldStreamMap,
@@ -150,6 +150,7 @@ func streamParser(s *stream, code string) *downloader.Media {
 		MimeType:     s.mime.String(),
 		UID:          uid,
 		LastModified: lastModified,
+		Sources:      sources,
 	}
 }
 
