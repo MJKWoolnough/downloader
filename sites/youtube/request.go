@@ -1,7 +1,6 @@
 package youtube
 
 import (
-	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -145,7 +144,7 @@ func streamParser(s *stream, code string) *downloader.Media {
 	}
 	h, _ := phttp.NewHTTP(s.url.String())
 	sources = append(sources, h)
-	uid := fmt.Sprintf("youtube-%s-%d-%d", code, s.quality, s.mime)
+	uid := "youtube-" + code + "-" + strconv.Itoa(int(s.quality)) + "-" + strconv.Itoa(int(s.mime))
 	return &downloader.Media{
 		Size:         size,
 		MimeType:     s.mime.String(),

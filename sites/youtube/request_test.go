@@ -56,3 +56,16 @@ func TestGetYoutubeData(t *testing.T) {
 		}
 	}
 }
+
+func TestValidataStreamData(t *testing.T) {
+	tests := []struct {
+		data    string
+		success bool
+	}{}
+
+	for n, test := range tests {
+		if (validateStreamData(test.data) == nil) != test.success {
+			t.Errorf("test %d: expecting sucess %v, got %v", n+1, test.success, !test.success)
+		}
+	}
+}
