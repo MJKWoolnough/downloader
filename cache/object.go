@@ -53,7 +53,7 @@ func (o *object) start(c *cache, key string, r io.ReadCloser) {
 		requests := make([]request, 0, 8)
 	CopyLoop:
 		for {
-			n, err = io.CopyN(f, r, 8192)
+			n, err = io.CopyN(f, r, 32*1024)
 			total += n
 			if err != nil {
 				if err == io.EOF {
@@ -71,7 +71,7 @@ func (o *object) start(c *cache, key string, r io.ReadCloser) {
 					i--
 				}
 			}
-		ChannelLoop1:
+		ChannelLoop:
 			for {
 				select {
 				case req := <-o.r:
@@ -83,7 +83,7 @@ func (o *object) start(c *cache, key string, r io.ReadCloser) {
 				case <-o.q:
 					break CopyLoop
 				default:
-					break ChannelLoop1
+					break ChannelLoop
 				}
 			}
 		}
@@ -97,7 +97,6 @@ func (o *object) start(c *cache, key string, r io.ReadCloser) {
 			}
 		}
 	}
-ChannelLoop2:
 	for {
 		select {
 		case req := <-o.r:

@@ -3,6 +3,7 @@ package cache
 import (
 	"io"
 	"os"
+	"path"
 	"sync"
 )
 
@@ -30,7 +31,7 @@ func LoadCache(dir string, os []string) *Cache {
 	return c
 }
 
-func (c *Cache) Get(key string, r io.ReadCloser, start, length int) *CachedObject {
+func (c *Cache) Get(key string, r io.ReadCloser) (*CachedObject, error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	o, ok := c.objects[key]
@@ -38,12 +39,14 @@ func (c *Cache) Get(key string, r io.ReadCloser, start, length int) *CachedObjec
 		o := newObject(c, key, r)
 		c.objects[key] = o
 	}
-	return &CachedObject{
-		object:   o,
-		filename: key,
-		start:    start,
-		length:   length,
+	f, err := os.Open(path.Join(c.dir, key))
+	if err != nil {
+		return nil, err
 	}
+	return &CachedObject{
+		object: o,
+		file:   f,
+	}, nil
 }
 
 func (c *Cache) Remove(key string) {
