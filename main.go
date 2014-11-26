@@ -18,7 +18,11 @@ func main() {
 }
 
 func proxy(w http.ResponseWriter, r *http.Request) {
-	req, err := downloader.DoRequest(r.RequestURI)
+	url := r.RequestURI
+	if url[0] == '/' {
+		url = url[1:]
+	}
+	req, err := downloader.DoRequest(url)
 	if err != nil {
 		if _, ok := err.(downloader.NoRequest); ok {
 			w.WriteHeader(http.StatusNotFound)
@@ -28,9 +32,9 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(err)
 		return
 	}
-	w.Header().Add("Content-Disposition", fmt.Sprintf("inline; filename=%q", req.Title))
+	w.Header().Add("Content-Disposition", fmt.Sprintf("inline; filename=%q", req.Title+".mp4"))
 	d := req.Downloaders[0]
-	//c := cache.Get(d.UID, d.Sources, d.Size, offset, length)
+	//c := cache.Get(d.UID, d.Sources, offset, length)
 	//io.Copy(w, c)
 	//c.Close()
 	w.Header().Add("Content-Length", fmt.Sprintf("%d", d.Size))
