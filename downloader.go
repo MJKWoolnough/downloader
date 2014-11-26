@@ -6,10 +6,6 @@ import (
 )
 
 type downloader interface {
-	// QuickMatch returns whether or not the downloader recognises the url,
-	// unambiguosly, as one belong to it. SHOULD NOT use networking to
-	// discover match.
-	QuickMatch(string) bool
 	// Match returns whether or not the url/string belong to this
 	// downloader. This may require using the network and contacting the
 	// corresponding site for confirmation.
@@ -54,11 +50,6 @@ func Register(d downloader) {
 }
 
 func DoRequest(url string) (*Request, error) {
-	for _, downloader := range downloaders {
-		if downloader.QuickMatch(url) {
-			return downloader.Request(url)
-		}
-	}
 	for _, downloader := range downloaders {
 		if downloader.Match(url) {
 			return downloader.Request(url)
