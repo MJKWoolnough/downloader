@@ -4,7 +4,6 @@ import (
 	"io"
 	"os"
 	"path"
-	"sync"
 )
 
 type request struct {
@@ -18,7 +17,6 @@ type response struct {
 }
 
 type object struct {
-	sync.RWMutex
 	r chan request
 	q chan struct{}
 }
@@ -32,82 +30,74 @@ func newObject(c *cache, key string, r io.ReadCloser) *object {
 	return o
 }
 
-func (o *object) Ready(size int64) error {
-	o.RLock()
-	select {
-	case <-o.q:
-		o.RUnlock()
-		return ObjectRemoved{}
-	default:
-	}
+func (o *object) Ready(size int64) (int64, error) {
 	c := make(chan response)
 	defer close(c)
-	o.r <- request{size, c}
-	o.RUnlock()
-	return <-c
+	select {
+	case <-o.q:
+		return 0, ObjectRemoved{}
+	case o.r <- request{size, c}:
+		toRet := <-c
+		return toRet.size, toRet.err
+	}
 }
 
 func (o *object) start(c *cache, key string, r io.ReadCloser) {
-	buf := make([]byte, 8192)
+
 	var total int64
 
-	f, err := os.Create(path.Join(c.dir, filename))
-	if err != nil {
-		o.Lock()
-		defer o.Unlock()
-		o.err = err
-		o.r = nil
-		return
-	}
+	filename := path.Join(c.dir, key)
 
-	requests := make([]request, 0, 8)
-
-	for {
-		n, err = io.CopyN(f, r, 8192)
-		total += n
-		if err != nil {
-			if err == io.EOF {
-				err = nil
-			} else {
-				c.Remove(key)
-			}
-			break
-		}
-		for i := 0; i < len(requests); i++ {
-			if requests[i].offset <= total {
-				requests[i].c <- response{size: total}
-				requests[i] = requests[len(requests)-1]
-				requests = requests[:len(requests)-1]
-				i--
-			}
-		}
+	f, err := os.Create(filename)
+	if err == nil {
+		requests := make([]request, 0, 8)
+	CopyLoop:
 		for {
-			select {
-			case req := <-o.r:
-				if req.offset <= total {
-					req.c <- response{size: total}
+			n, err = io.CopyN(f, r, 8192)
+			total += n
+			if err != nil {
+				if err == io.EOF {
+					err = nil
 				} else {
-					requests = append(requests, req)
+					c.Remove(key)
 				}
-			default:
+				break CopyLoop
+			}
+			for i := 0; i < len(requests); i++ {
+				if requests[i].offset <= total {
+					requests[i].c <- response{size: total}
+					requests[i] = requests[len(requests)-1]
+					requests = requests[:len(requests)-1]
+					i--
+				}
+			}
+		ChannelLoop1:
+			for {
+				select {
+				case req := <-o.r:
+					if req.offset <= total {
+						req.c <- response{size: total}
+					} else {
+						requests = append(requests, req)
+					}
+				case <-o.q:
+					break CopyLoop
+				default:
+					break ChannelLoop1
+				}
 			}
 		}
-		select {
-		case <-o.q:
-			break
-		default:
+		f.Close()
+		r.Close()
+		for _, req := range requests {
+			if req.offset <= total {
+				req.c <- response{size: total, err: io.EOF}
+			} else {
+				req.c <- response{size: total, err: err}
+			}
 		}
 	}
-	f.Close()
-	r.Close()
-	for _, req := range requests {
-		if req.offset <= total {
-			req.c <- response{size: total, err: io.EOF}
-		} else {
-			req.c <- response{size: total, err: err}
-		}
-	}
-	requests = nil
+ChannelLoop2:
 	for {
 		select {
 		case req := <-o.r:
@@ -117,12 +107,14 @@ func (o *object) start(c *cache, key string, r io.ReadCloser) {
 				req.c <- response{size: total, err: err}
 			}
 		case <-o.q:
-			o.Lock()
-			o.r = nil
-			o.Unlock()
-			break
+			os.Remove(filename)
+			return
 		}
 	}
+}
+
+func (o *object) remove() {
+
 }
 
 // Errors

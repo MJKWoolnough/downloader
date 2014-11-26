@@ -3,7 +3,6 @@ package cache
 import (
 	"io"
 	"os"
-	"path"
 	"sync"
 )
 
@@ -47,13 +46,12 @@ func (c *Cache) Get(key string, r io.ReadCloser, start, length int) *CachedObjec
 	}
 }
 
-func (c *Cache) Remove(key string) error {
+func (c *Cache) Remove(key string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	if o, ok := c.objects[key]; ok {
 		delete(c.objects, key)
 		close(o.q)
-		return os.Remove(path.Join(c.dir, key))
 	}
 	return nil
 }
