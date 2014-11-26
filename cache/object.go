@@ -113,10 +113,6 @@ ChannelLoop2:
 	}
 }
 
-func (o *object) remove() {
-
-}
-
 // Errors
 
 type ObjectRemoved struct{}
