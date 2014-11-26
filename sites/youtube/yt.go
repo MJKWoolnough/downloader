@@ -11,12 +11,8 @@ func init() {
 
 type youtube struct{}
 
-func (youtube) QuickMatch(text string) bool {
-	return quickMatch(text)
-}
-
 func (youtube) Match(text string) bool {
-	return match(text)
+	return quickMatch(text)
 }
 
 func (youtube) Request(text string) (*downloader.Request, error) {
