@@ -146,7 +146,7 @@ func streamParser(s *stream, code string) *downloader.Media {
 	sources = append(sources, h)
 	uid := "youtube-" + code + "-" + strconv.Itoa(int(s.quality)) + "-" + strconv.Itoa(int(s.mime))
 	return &downloader.Media{
-		Size:         size,
+		Size:         int64(size),
 		MimeType:     s.mime.String(),
 		UID:          uid,
 		LastModified: lastModified,

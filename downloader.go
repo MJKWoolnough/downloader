@@ -27,7 +27,7 @@ type Request struct {
 // Media contains information about a particular version of a file.
 type Media struct {
 	// Size is the length, in bytes, of the requested media.
-	Size int
+	Size int64
 	// MimeType is the mimetype of the media.
 	MimeType string
 	// UID is a string that uniqely identifies this request. Different
