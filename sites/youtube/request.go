@@ -42,7 +42,7 @@ func getYoutubeData(u string) (url.Values, error) {
 		return nil, err
 	}
 	if r.StatusCode != http.StatusOK {
-		return nil, phttp.UnexpectedStatus(r.StatusCode)
+		return nil, phttp.UnexpectedStatus{r.StatusCode, http.StatusOK}
 	}
 	data, err := ioutil.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
@@ -136,13 +136,15 @@ func streamParser(s *stream, code string) *downloader.Media {
 	if err != nil {
 		return nil
 	}
-	sources := make([]io.ReadCloser, 0, 2)
+	sources := make([]downloader.Downloader, 0, 2)
 	if !fallback {
-		h, _ := phttp.NewHTTP(s.url.String())
+		req, _ := http.NewRequest("GET", s.url.String(), nil)
+		h := &phttp.HTTP{Client: http.DefaultClient, Request: req, Size: int64(size)}
 		sources = append(sources, h)
 		s.url.Host = s.fallbackHost
 	}
-	h, _ := phttp.NewHTTP(s.url.String())
+	req, _ := http.NewRequest("GET", s.url.String(), nil)
+	h := &phttp.HTTP{Client: http.DefaultClient, Request: req, Size: int64(size)}
 	sources = append(sources, h)
 	uid := "youtube-" + code + "-" + strconv.Itoa(int(s.quality)) + "-" + strconv.Itoa(int(s.mime))
 	return &downloader.Media{

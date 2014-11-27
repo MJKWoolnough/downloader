@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-type downloader interface {
+type Site interface {
 	// Match returns whether or not the url/string belong to this
 	// downloader. This may require using the network and contacting the
 	// corresponding site for confirmation.
@@ -24,6 +24,11 @@ type Request struct {
 	Downloaders []Media
 }
 
+type Downloader interface {
+	NewReadCloser(int64, int64) (io.ReadCloser, error)
+	Length() int64
+}
+
 // Media contains information about a particular version of a file.
 type Media struct {
 	// Size is the length, in bytes, of the requested media.
@@ -39,20 +44,20 @@ type Media struct {
 	LastModified time.Time
 	// Sources represents a list of possible sources for this incarnation
 	// of the media file
-	Sources []io.ReadCloser
+	Sources []Downloader
 }
 
-var downloaders []downloader
+var sites []Site
 
-// Register allows packages to register a downloader.
-func Register(d downloader) {
-	downloaders = append(downloaders, d)
+// Register allows packages to register a Site.
+func Register(s Site) {
+	sites = append(sites, s)
 }
 
 func DoRequest(url string) (*Request, error) {
-	for _, downloader := range downloaders {
-		if downloader.Match(url) {
-			return downloader.Request(url)
+	for _, site := range sites {
+		if site.Match(url) {
+			return site.Request(url)
 		}
 	}
 	return nil, NoRequest{}

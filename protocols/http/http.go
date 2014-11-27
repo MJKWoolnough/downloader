@@ -4,58 +4,71 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"sync"
 )
 
 // HTTP turns an http request into a io.ReadCloser.
 type HTTP struct {
 	Client  *http.Client
 	Request *http.Request
-	data    io.ReadCloser
+	Size    int64
+	sync.Mutex
 }
 
 // NewHTTP is a constructor for a simple http GET request. For a more complex
 // construction, use the struct directly.
 func NewHTTP(url string) (*HTTP, error) {
-	r, err := http.NewRequest("GET", url, nil)
+	resp, err := http.Head(url)
+	if err != nil {
+		return nil, err
+	}
+	size, err := strconv.Atoi(resp.Header.Get("Content-Length"))
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
 	return &HTTP{
 		Client:  http.DefaultClient,
-		Request: r,
+		Request: req,
+		Size:    int64(size),
 	}, nil
 }
 
-// Read is an implementation of io.Reader.
-func (h *HTTP) Read(d []byte) (int, error) {
-	if h.data == nil {
-		r, err := h.Client.Do(h.Request)
-		if err != nil {
-			return 0, err
-		}
-		if r.StatusCode != http.StatusOK {
-			return 0, UnexpectedStatus(r.StatusCode)
-		}
-		h.data = r.Body
+func (h *HTTP) NewReadCloser(start, end int64) (io.ReadCloser, error) {
+	h.Lock()
+	defer h.Unlock()
+	if start > 0 && end < h.Size {
+		h.Request.Header.Add("Content-Range", strconv.Itoa(int(start))+"-"+strconv.Itoa(int(end))+"/"+strconv.Itoa(int(h.Size)))
+		defer h.Request.Header.Del("Content-Range")
 	}
-	return h.data.Read(d)
+	r, err := h.Client.Do(h.Request)
+	if err != nil {
+		return nil, err
+	}
+	if start > 0 && end < h.Size {
+		if r.StatusCode != http.StatusPartialContent {
+			return nil, UnexpectedStatus{r.StatusCode, http.StatusPartialContent}
+		}
+	} else if r.StatusCode != http.StatusOK {
+		return nil, UnexpectedStatus{r.StatusCode, http.StatusOK}
+	}
+	return r.Body, nil
 }
 
-// Close is an implementation of io.Closer.
-func (h *HTTP) Close() error {
-	if h.data == nil {
-		return nil
-	}
-	err := h.data.Close()
-	h.data = nil
-	return err
+func (h *HTTP) Length() int64 {
+	return h.Size
 }
 
 // Errors
 
 // UnexpectedStatus is an error returned when a non-200 status is received.
-type UnexpectedStatus int
+type UnexpectedStatus struct {
+	Got, Expected int
+}
 
 func (u UnexpectedStatus) Error() string {
-	return "received non-200 status: " + strconv.Itoa(int(u))
+	return "received status " + strconv.Itoa(u.Got) + ", expecting " + strconv.Itoa(u.Expected)
 }
