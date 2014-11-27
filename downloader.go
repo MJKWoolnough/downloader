@@ -17,8 +17,8 @@ type downloader interface {
 // Request is a value returned by a downloader and contains all of the
 // necessary information to download a particular file.
 type Request struct {
-	// Title is the title of the media, if it has one.
-	Title string
+	// Filename is the title of the media, if it has one, and an extension.
+	Filename string
 	// Downloaders a a list of ReadClosers that all represented the requested
 	// media.
 	Downloaders []Media

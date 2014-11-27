@@ -188,7 +188,7 @@ func request(text string) (*downloader.Request, error) {
 		return nil, NoStreams{}
 	}
 	return &downloader.Request{
-		Title:       v[fieldTitle][0],
+		Filename:    v[fieldTitle][0] + ".mp4",
 		Downloaders: media,
 	}, nil
 }
