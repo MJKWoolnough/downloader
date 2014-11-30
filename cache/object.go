@@ -1,115 +1,215 @@
 package cache
 
 import (
-	"io"
 	"os"
-	"path"
+	"sync"
+
+	"github.com/MJKWoolnough/boolmap"
+	"github.com/MJKWoolnough/downloader"
 )
 
 type request struct {
-	offset int64
-	c      chan response
-}
-
-type response struct {
-	size int64
-	err  error
+	start, end uint
+	c          chan error
 }
 
 type object struct {
-	r chan request
-	q chan struct{}
+	req  chan request
+	quit chan struct{}
+	size int64
+	file *os.File
 }
 
-func newObject(c *cache, key string, r io.ReadCloser) *object {
-	o := &object{
-		r: make(chan request),
-		q: make(chan struct{}),
-	}
-	go o.start(c, key, rs)
-	return o
-}
+const chunkSize = 512 * 1024
 
-func (o *object) Ready(size int64) (int64, error) {
-	c := make(chan response)
-	defer close(c)
-	select {
-	case <-o.q:
-		return 0, ObjectRemoved{}
-	case o.r <- request{size, c}:
-		toRet := <-c
-		return toRet.size, toRet.err
-	}
-}
-
-func (o *object) start(c *cache, key string, r io.ReadCloser) {
-
-	var total int64
-
-	filename := path.Join(c.dir, key)
-
+func newObject(filename string, r downloader.Downloader) (*object, error) {
 	f, err := os.Create(filename)
-	if err == nil {
-		requests := make([]request, 0, 8)
-	CopyLoop:
-		for {
-			n, err = io.CopyN(f, r, 32*1024)
-			total += n
-			if err != nil {
-				if err == io.EOF {
-					err = nil
-				} else {
-					c.Remove(key)
+	if err != nil {
+		return nil, err
+	}
+	if err = preallocate(f, r.Length()); err != nil {
+		return nil, err
+	}
+	if err = os.Remove(filename); err != nil {
+		return nil, err
+	}
+	o := &object{
+		req:  make(chan request),
+		quit: make(chan struct{}),
+		size: r.Length(),
+		file: f,
+	}
+	go o.taskMaster(r)
+	return o, nil
+}
+
+func (o *object) Request(start int64, length int) error {
+	req := request{
+		startChunk: uint(start / chunkSize),
+		endChunk:   uint((start + int64(length)) / chunkSize),
+		c:          make(chan error),
+	}
+	defer close(req.c)
+	select {
+	case o.r <- req:
+		return <-req.c
+	case <-o.q:
+		return ObjectRemoved{}
+	}
+}
+
+func (o *object) taskMaster(r downloader.Downloader) {
+	size := r.Length()
+	numChunks := size / chunkSize
+	if size%chunkSize > 0 {
+		numChunks++
+	}
+	ctx := &context{
+		Downloader:     r,
+		chunkDone:      make(chan uint),
+		downloaderDone: make(chan struct{}),
+		crumbslice:     boolmap.NewCrumbSliceSize(uint(numChunks)),
+	}
+
+	requests := make([]request, 0, 32)
+
+	chunks.Set(0, 1)
+	go o.download(r, 0, chunks, chunkDone)
+	running := 1
+
+downloadLoop:
+	for {
+		select {
+		case req := <-o.req:
+			start := uint(-1)
+			for i := req.start; i <= req.end; i++ {
+				if ctx.GetCompareSet(i, 0, 1) == 0 {
+					start = i
+					break
 				}
-				break CopyLoop
 			}
+			if start >= 0 {
+				requests = append(requests, req)
+				go o.download(ctx, start)
+				running++
+			} else {
+				req.c <- nil
+			}
+		case chunk := <-ctx.chunkDone:
+		checkRequestLoop:
 			for i := 0; i < len(requests); i++ {
-				if requests[i].offset <= total {
-					requests[i].c <- response{size: total}
+				req := requests[i]
+				if req.start <= chunk && req.end >= chunk {
+					for j := req.start; j <= req.end; j++ {
+						if ctx.Get(j) != 2 {
+							continue checkRequestLoop
+						}
+					}
+					req.c <- nil
 					requests[i] = requests[len(requests)-1]
 					requests = requests[:len(requests)-1]
 					i--
 				}
 			}
-		ChannelLoop:
-			for {
-				select {
-				case req := <-o.r:
-					if req.offset <= total {
-						req.c <- response{size: total}
-					} else {
-						requests = append(requests, req)
+		case <-ctx.downloaderDone:
+			running--
+			if running == 0 {
+				for i := 0; i <= o.size/chunkSize; i++ {
+					if ctx.GetCompareSet(i, 0, 1) {
+						go o.download(ctx, i)
+						break
 					}
-				case <-o.q:
-					break CopyLoop
-				default:
-					break ChannelLoop
 				}
 			}
-		}
-		f.Close()
-		r.Close()
-		for _, req := range requests {
-			if req.offset <= total {
-				req.c <- response{size: total, err: io.EOF}
-			} else {
-				req.c <- response{size: total, err: err}
+			if running == 0 {
+				for _, req := range requests {
+					req.c <- nil
+				}
+				close(context.downloaderDone)
+				close(context.chunkDone)
+				break downloadLoop
 			}
+		case <-o.quit:
+			o.file.Close()
+			for _, req := range requests {
+				req.c <- ObjectRemoved{}
+			}
+			return
 		}
 	}
 	for {
 		select {
-		case req := <-o.r:
-			if req.offset <= total {
-				req.c <- response{size: total, err: io.EOF}
-			} else {
-				req.c <- response{size: total, err: err}
-			}
-		case <-o.q:
-			os.Remove(filename)
+		case req := <-o.req:
+			req.c <- nil
+		case <-o.quit:
+			o.file.Close()
 			return
 		}
 	}
+}
+
+func (o *object) download(ctx context, start uint, chunkDone chan uint) {
+	defer func() {
+		ctx.downloaderDone <- struct{}{}
+	}()
+	var end uint
+	for end = start + 1; end <= o.size/chunkSize; end++ {
+		if !ctx.Get(end) != 0 {
+			break
+		}
+	}
+
+	rc, err := ctx.NewReadCloser(start*chunkSize, end*chunkSize-1)
+	defer rc.Close()
+	buf := make([]byte, chunkSize)
+	for chunk := start; chunk < end; chunk++ {
+		if !ctx.GetCompareSet(chunk+1, 0, 1) {
+			return
+		}
+		n, err := rc.Read(buf)
+		if err != nil {
+			ctx.Set(chunk, 0)
+			return
+		}
+		_, err = o.file.WriteAt(buf[:n], chunk*chunkSize)
+		if err != nil {
+			ctx.Set(chunk, 0)
+			return
+		}
+		ctx.Set(chunk, 2)
+		ctx.chunkDone <- chunk
+	}
+}
+
+type context struct {
+	downloader.Downloader
+	chunkDone      chan uint
+	downloaderDone chan struct{}
+	crumbslice     *boolmap.CrumbSlice
+	mutex          sync.RWMutex
+}
+
+func (c *context) Get(p uint) byte {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+	return c.crumbslice.Get(p)
+}
+
+func (c *context) Set(p uint, d byte) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.crumbslice.Set(p, d)
+}
+
+func (c *context) GetCompareSet(p uint, cmp, set byte) bool {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	old := c.crumbslice.Get(p)
+	if old == cmp {
+		c.crumbslice.Set(set)
+		return true
+	}
+	return false
 }
 
 // Errors
