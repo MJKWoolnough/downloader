@@ -40,8 +40,11 @@ func NewHTTP(url string) (*HTTP, error) {
 func (h *HTTP) NewReadCloser(start, end int64) (io.ReadCloser, error) {
 	h.Lock()
 	defer h.Unlock()
-	if start > 0 && end < h.Size {
-		h.Request.Header.Add("Content-Range", strconv.Itoa(int(start))+"-"+strconv.Itoa(int(end))+"/"+strconv.Itoa(int(h.Size)))
+	if start > 0 {
+		if end > h.Size {
+			end = h.Size
+		}
+		h.Request.Header.Add("Content-Range", strconv.Itoa(int(start))+"-"+strconv.Itoa(int(end)-1)+"/"+strconv.Itoa(int(h.Size)))
 		defer h.Request.Header.Del("Content-Range")
 	}
 	r, err := h.Client.Do(h.Request)
