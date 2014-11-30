@@ -1,10 +1,10 @@
 package cache
 
 import (
-	"io"
-	"os"
 	"path"
 	"sync"
+
+	"github.com/MJKWoolnough/downloader"
 )
 
 type Cache struct {
@@ -31,21 +31,20 @@ func LoadCache(dir string, os []string) *Cache {
 	return c
 }
 
-func (c *Cache) Get(key string, r io.ReadCloser) (*CachedObject, error) {
+func (c *Cache) Get(key string, r downloader.Downloader) (*CachedObject, error) {
+	var err error
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	o, ok := c.objects[key]
 	if !ok {
-		o := newObject(c, key, r)
+		o, err = newObject(path.Join(c.dir, key), r)
+		if err != nil {
+			return nil, err
+		}
 		c.objects[key] = o
-	}
-	f, err := os.Open(path.Join(c.dir, key))
-	if err != nil {
-		return nil, err
 	}
 	return &CachedObject{
 		object: o,
-		file:   f,
 	}, nil
 }
 
@@ -53,17 +52,14 @@ func (c *Cache) Remove(key string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	if o, ok := c.objects[key]; ok {
-		delete(c.objects, key)
 		close(o.q)
+		delete(c.objects, key)
 	}
-	return nil
 }
 
-func (c *Cache) Dir() string {
-	return c.dir
-}
-
-func (c *Cache) Save() []string {
+func (c *Cache) Keys() []string {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	os := make([]string, 0, len(c.objects))
 	for key := range c.objects {
 		os = append(os, key)
@@ -71,9 +67,12 @@ func (c *Cache) Save() []string {
 	return os
 }
 
-func (c *Cache) Clear() error {
+func (c *Cache) Close() error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	c.objects = make(map[string]*object)
-	return os.RemoveAll(c.dir)
+	for key, o := range c.objects {
+		close(o.q)
+		delete(c.objects, key)
+	}
+	return nil
 }
