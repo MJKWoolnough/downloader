@@ -159,7 +159,7 @@ func (o *object) download(ctx context, start uint, chunkDone chan uint) {
 		}
 	}
 
-	rc, err := ctx.NewReadCloser(start*chunkSize, end*chunkSize-1)
+	rc, err := ctx.NewReadCloser(start*chunkSize, end*chunkSize)
 	defer rc.Close()
 	buf := make([]byte, chunkSize)
 	for chunk := start; chunk < end; chunk++ {
