@@ -44,7 +44,7 @@ func (c *Cache) Get(key string, r downloader.Downloader) (*CachedObject, error) 
 		c.objects[key] = o
 	}
 	return &CachedObject{
-		object: o,
+		o: o,
 	}, nil
 }
 
@@ -52,7 +52,7 @@ func (c *Cache) Remove(key string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	if o, ok := c.objects[key]; ok {
-		close(o.q)
+		close(o.quit)
 		delete(c.objects, key)
 	}
 }
@@ -71,7 +71,7 @@ func (c *Cache) Close() error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	for key, o := range c.objects {
-		close(o.q)
+		close(o.quit)
 		delete(c.objects, key)
 	}
 	return nil

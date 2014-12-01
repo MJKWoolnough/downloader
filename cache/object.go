@@ -9,8 +9,8 @@ import (
 )
 
 type request struct {
-	start, end uint
-	c          chan error
+	startChunk, endChunk uint
+	c                    chan error
 }
 
 type object struct {
@@ -51,9 +51,9 @@ func (o *object) Request(start int64, length int) error {
 	}
 	defer close(req.c)
 	select {
-	case o.r <- req:
+	case o.req <- req:
 		return <-req.c
-	case <-o.q:
+	case <-o.quit:
 		return ObjectRemoved{}
 	}
 }
@@ -73,34 +73,29 @@ func (o *object) taskMaster(r downloader.Downloader) {
 
 	requests := make([]request, 0, 32)
 
-	chunks.Set(0, 1)
-	go o.download(r, 0, chunks, chunkDone)
+	ctx.Set(0, 1)
+	go o.download(ctx, 0)
 	running := 1
 
 downloadLoop:
 	for {
 		select {
 		case req := <-o.req:
-			start := uint(-1)
-			for i := req.start; i <= req.end; i++ {
-				if ctx.GetCompareSet(i, 0, 1) == 0 {
-					start = i
-					break
+			for i := req.startChunk; i <= req.endChunk; i++ {
+				if ctx.GetCompareSet(i, 0, 1) {
+					requests = append(requests, req)
+					go o.download(ctx, i)
+					running++
+					continue downloadLoop
 				}
 			}
-			if start >= 0 {
-				requests = append(requests, req)
-				go o.download(ctx, start)
-				running++
-			} else {
-				req.c <- nil
-			}
+			req.c <- nil
 		case chunk := <-ctx.chunkDone:
 		checkRequestLoop:
 			for i := 0; i < len(requests); i++ {
 				req := requests[i]
-				if req.start <= chunk && req.end >= chunk {
-					for j := req.start; j <= req.end; j++ {
+				if req.startChunk <= chunk && req.endChunk >= chunk {
+					for j := req.startChunk; j <= req.endChunk; j++ {
 						if ctx.Get(j) != 2 {
 							continue checkRequestLoop
 						}
@@ -114,7 +109,7 @@ downloadLoop:
 		case <-ctx.downloaderDone:
 			running--
 			if running == 0 {
-				for i := 0; i <= o.size/chunkSize; i++ {
+				for i := uint(0); i <= uint(o.size/chunkSize); i++ {
 					if ctx.GetCompareSet(i, 0, 1) {
 						go o.download(ctx, i)
 						break
@@ -125,8 +120,8 @@ downloadLoop:
 				for _, req := range requests {
 					req.c <- nil
 				}
-				close(context.downloaderDone)
-				close(context.chunkDone)
+				close(ctx.downloaderDone)
+				close(ctx.chunkDone)
 				break downloadLoop
 			}
 		case <-o.quit:
@@ -148,22 +143,25 @@ downloadLoop:
 	}
 }
 
-func (o *object) download(ctx context, start uint, chunkDone chan uint) {
+func (o *object) download(ctx *context, start uint) {
 	defer func() {
 		ctx.downloaderDone <- struct{}{}
 	}()
 	var end uint
-	for end = start + 1; end <= o.size/chunkSize; end++ {
-		if !ctx.Get(end) != 0 {
+	for end = start + 1; end <= uint(o.size/chunkSize); end++ {
+		if ctx.Get(end) != 0 {
 			break
 		}
 	}
 
-	rc, err := ctx.NewReadCloser(start*chunkSize, end*chunkSize)
+	rc, err := ctx.NewReadCloser(int64(start*chunkSize), int64(end*chunkSize))
+	if err != nil {
+		ctx.Set(start, 0)
+	}
 	defer rc.Close()
 	buf := make([]byte, chunkSize)
 	for chunk := start; chunk < end; chunk++ {
-		if !ctx.GetCompareSet(chunk+1, 0, 1) {
+		if !ctx.GetCompareSet(chunk+1, 0, 1) && chunk != start {
 			return
 		}
 		n, err := rc.Read(buf)
@@ -171,7 +169,7 @@ func (o *object) download(ctx context, start uint, chunkDone chan uint) {
 			ctx.Set(chunk, 0)
 			return
 		}
-		_, err = o.file.WriteAt(buf[:n], chunk*chunkSize)
+		_, err = o.file.WriteAt(buf[:n], int64(chunk*chunkSize))
 		if err != nil {
 			ctx.Set(chunk, 0)
 			return
@@ -206,7 +204,7 @@ func (c *context) GetCompareSet(p uint, cmp, set byte) bool {
 	defer c.mutex.Unlock()
 	old := c.crumbslice.Get(p)
 	if old == cmp {
-		c.crumbslice.Set(set)
+		c.crumbslice.Set(p, set)
 		return true
 	}
 	return false

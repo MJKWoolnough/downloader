@@ -3,8 +3,8 @@ package cache
 import "io"
 
 type CachedObject struct {
-	object *object
-	pos    int64
+	o   *object
+	pos int64
 }
 
 func (c *CachedObject) Read(p []byte) (int, error) {
@@ -33,7 +33,7 @@ func (c *CachedObject) Seek(offset int64, whence int) (int64, error) {
 		c.pos = c.o.size - offset
 	default:
 		c.pos = 0
-		return 0, UnknownWhence{}
+		return 0, UnknownWhence(whence)
 	}
 	if c.pos < 0 {
 		c.pos = 0
