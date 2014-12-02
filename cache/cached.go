@@ -8,10 +8,7 @@ type CachedObject struct {
 }
 
 func (c *CachedObject) Read(p []byte) (int, error) {
-	if err := c.o.Request(c.pos, len(p)); err != nil {
-		return 0, err
-	}
-	n, err := c.o.file.ReadAt(p, c.pos)
+	n, err := c.ReadAt(p, c.pos)
 	c.pos += int64(n)
 	return n, err
 }
