@@ -36,7 +36,7 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 	}
 	d := req.Downloaders[0]
 
-	c, err := fileCache.Get(d.UID, d.Sources[0], d.Size)
+	c, err := fileCache.Get(d.UID, d.Sources[0])
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
