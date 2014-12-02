@@ -44,14 +44,14 @@ func (h *HTTP) NewReadCloser(start, end int64) (io.ReadCloser, error) {
 		if end > h.Size {
 			end = h.Size
 		}
-		h.Request.Header.Add("Content-Range", strconv.Itoa(int(start))+"-"+strconv.Itoa(int(end)-1)+"/"+strconv.Itoa(int(h.Size)))
-		defer h.Request.Header.Del("Content-Range")
+		h.Request.Header.Add("Range", "bytes="+strconv.Itoa(int(start))+"-"+strconv.Itoa(int(end)-1))
+		defer h.Request.Header.Del("Range")
 	}
 	r, err := h.Client.Do(h.Request)
 	if err != nil {
 		return nil, err
 	}
-	if start > 0 && end < h.Size {
+	if start > 0 {
 		if r.StatusCode != http.StatusPartialContent {
 			return nil, UnexpectedStatus{r.StatusCode, http.StatusPartialContent}
 		}
