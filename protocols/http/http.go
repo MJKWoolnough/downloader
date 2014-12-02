@@ -18,25 +18,45 @@ type HTTP struct {
 // NewHTTP is a constructor for a simple http GET request. For a more complex
 // construction, use the struct directly.
 func NewHTTP(url string) (*HTTP, error) {
-	resp, err := http.Head(url)
-	if err != nil {
-		return nil, err
-	}
-	size, err := strconv.Atoi(resp.Header.Get("Content-Length"))
-	if err != nil {
-		return nil, err
-	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	return &HTTP{
+	h := &HTTP{
 		Client:  http.DefaultClient,
 		Request: req,
-		Size:    int64(size),
-	}, nil
+	}
+	err := h.GetLength()
+	if err != nil {
+		return nil, err
+	}
+	return h, nil
 }
 
+// GetLength sends a HEAD request in order to determine the content length
+func (h *HTTP) GetLength() error {
+	old := h.Request.Method
+	h.Request.Method = "HEAD"
+	defer func() {
+		h.Request.Method = old
+	}()
+	resp, err := h.Client.Do(h.Request)
+	if err != nil {
+		return err
+	}
+	cl := resp.Header.Get("Content-Length")
+	if len(cl) == 0 {
+		return NoLength{}
+	}
+	size, err := strconv.Atoi(cl)
+	if err != nil {
+		return err
+	}
+	h.Size = int64(size)
+	return nil
+}
+
+// NewReadCloser returns a new io.ReadCloser with the start and end bounds set
 func (h *HTTP) NewReadCloser(start, end int64) (io.ReadCloser, error) {
 	h.Lock()
 	defer h.Unlock()
@@ -61,11 +81,20 @@ func (h *HTTP) NewReadCloser(start, end int64) (io.ReadCloser, error) {
 	return r.Body, nil
 }
 
+// Length returns the total length of the request
 func (h *HTTP) Length() int64 {
 	return h.Size
 }
 
 // Errors
+
+// NoLength is an error returned when the length of the resource could not be
+// automatically determined
+type NoLength struct{}
+
+func (NoLength) Error() string {
+	return "could not determine length"
+}
 
 // UnexpectedStatus is an error returned when a non-200 status is received.
 type UnexpectedStatus struct {
