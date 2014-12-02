@@ -1,11 +1,13 @@
 package cache
 
 import (
+	"io"
 	"os"
 	"sync"
 
 	"github.com/MJKWoolnough/boolmap"
 	"github.com/MJKWoolnough/downloader"
+	"github.com/MJKWoolnough/memio"
 )
 
 type request struct {
@@ -52,7 +54,8 @@ func (o *object) Request(start int64, length int) error {
 	defer close(req.c)
 	select {
 	case o.req <- req:
-		return <-req.c
+		err := <-req.c
+		return err
 	case <-o.quit:
 		return ObjectRemoved{}
 	}
@@ -69,6 +72,7 @@ func (o *object) taskMaster(r downloader.Downloader) {
 		chunkDone:      make(chan uint),
 		downloaderDone: make(chan struct{}),
 		crumbslice:     boolmap.NewCrumbSliceSize(uint(numChunks)),
+		numChunks:      uint(numChunks),
 	}
 
 	requests := make([]request, 0, 32)
@@ -86,6 +90,9 @@ downloadLoop:
 					requests = append(requests, req)
 					go o.download(ctx, i)
 					running++
+					continue downloadLoop
+				} else if ctx.Get(i) == 1 {
+					requests = append(requests, req)
 					continue downloadLoop
 				}
 			}
@@ -111,6 +118,7 @@ downloadLoop:
 			if running == 0 {
 				for i := uint(0); i <= uint(o.size/chunkSize); i++ {
 					if ctx.GetCompareSet(i, 0, 1) {
+						running++
 						go o.download(ctx, i)
 						break
 					}
@@ -148,7 +156,7 @@ func (o *object) download(ctx *context, start uint) {
 		ctx.downloaderDone <- struct{}{}
 	}()
 	var end uint
-	for end = start + 1; end <= uint(o.size/chunkSize); end++ {
+	for end = start + 1; end <= ctx.numChunks; end++ {
 		if ctx.Get(end) != 0 {
 			break
 		}
@@ -157,15 +165,20 @@ func (o *object) download(ctx *context, start uint) {
 	rc, err := ctx.NewReadCloser(int64(start*chunkSize), int64(end*chunkSize))
 	if err != nil {
 		ctx.Set(start, 0)
+		return
 	}
 	defer rc.Close()
 	buf := make([]byte, chunkSize)
+	w := memio.Create(&buf)
 	for chunk := start; chunk < end; chunk++ {
-		if !ctx.GetCompareSet(chunk+1, 0, 1) && chunk != start {
+		if !ctx.GetCompareSet(chunk, 0, 1) && chunk != start {
 			return
 		}
-		n, err := rc.Read(buf)
-		if err != nil {
+		w.Seek(0, 0)
+		n, err := io.CopyN(w, rc, chunkSize)
+		if err == io.EOF && chunk == ctx.numChunks-1 && n == ctx.Length()%chunkSize {
+			err = nil
+		} else if err != nil {
 			ctx.Set(chunk, 0)
 			return
 		}
@@ -185,6 +198,7 @@ type context struct {
 	downloaderDone chan struct{}
 	crumbslice     *boolmap.CrumbSlice
 	mutex          sync.RWMutex
+	numChunks      uint
 }
 
 func (c *context) Get(p uint) byte {
