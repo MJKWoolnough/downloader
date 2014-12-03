@@ -27,7 +27,7 @@ func (c *CachedObject) Seek(offset int64, whence int) (int64, error) {
 	case 1:
 		c.pos += offset
 	case 2:
-		c.pos = c.o.size - offset
+		c.pos = c.o.size + offset
 	default:
 		c.pos = 0
 		return 0, UnknownWhence(whence)
