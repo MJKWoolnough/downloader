@@ -20,17 +20,6 @@ func NewCache(dir string) *Cache {
 	}
 }
 
-func LoadCache(dir string, os []string) *Cache {
-	c := &Cache{
-		objects: make(map[string]*object),
-		dir:     dir,
-	}
-	for _, o := range os {
-		c.objects[o] = &object{}
-	}
-	return c
-}
-
 func (c *Cache) Get(key string, r downloader.Downloader) (*CachedObject, error) {
 	var err error
 	c.mutex.Lock()
