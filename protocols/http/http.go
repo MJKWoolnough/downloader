@@ -26,7 +26,7 @@ func NewHTTP(url string) (*HTTP, error) {
 		Client:  http.DefaultClient,
 		Request: req,
 	}
-	err := h.GetLength()
+	err = h.GetLength()
 	if err != nil {
 		return nil, err
 	}
@@ -37,46 +37,40 @@ func NewHTTP(url string) (*HTTP, error) {
 func (h *HTTP) GetLength() error {
 	old := h.Request.Method
 	h.Request.Method = "HEAD"
-	defer func() {
-		h.Request.Method = old
-	}()
 	resp, err := h.Client.Do(h.Request)
+	h.Request.Method = old
 	if err != nil {
 		return err
 	}
-	cl := resp.Header.Get("Content-Length")
-	if len(cl) == 0 {
+	if len(resp.Header.Get("Content-Length")) == 0 {
 		return NoLength{}
 	}
-	size, err := strconv.Atoi(cl)
-	if err != nil {
-		return err
-	}
-	h.Size = int64(size)
+	h.Size = resp.ContentLength
 	return nil
 }
 
 // NewReadCloser returns a new io.ReadCloser with the start and end bounds set
-func (h *HTTP) NewReadCloser(start, end int64) (io.ReadCloser, error) {
+func (h *HTTP) NewReadCloser(start, length int64) (io.ReadCloser, error) {
 	h.Lock()
 	defer h.Unlock()
-	if start > 0 {
-		if end > h.Size {
-			end = h.Size
-		}
+	if length < 0 {
+		length = h.Size
+	}
+	if start+length > h.Size {
+		length = h.Size - start
+	}
+	expecting := http.StatusOK
+	if start > 0 || length != h.Size {
 		h.Request.Header.Add("Range", "bytes="+strconv.Itoa(int(start))+"-"+strconv.Itoa(int(end)-1))
 		defer h.Request.Header.Del("Range")
+		expecting = http.StatusPartialContent
 	}
 	r, err := h.Client.Do(h.Request)
 	if err != nil {
 		return nil, err
 	}
-	if start > 0 {
-		if r.StatusCode != http.StatusPartialContent {
-			return nil, UnexpectedStatus{r.StatusCode, http.StatusPartialContent}
-		}
-	} else if r.StatusCode != http.StatusOK {
-		return nil, UnexpectedStatus{r.StatusCode, http.StatusOK}
+	if r.StatusCode != expecting {
+		return nil, UnexpectedStatus{r.StatusCode, expecting}
 	}
 	return r.Body, nil
 }
