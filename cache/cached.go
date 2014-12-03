@@ -2,8 +2,14 @@ package cache
 
 import "io"
 
+type RequestReadAtSizer interface {
+	io.ReaderAt
+	Request(int64, int) error
+	Size() int64
+}
+
 type CachedObject struct {
-	o   *object
+	o   RequestReadAtSizer
 	pos int64
 }
 
@@ -17,7 +23,7 @@ func (c *CachedObject) ReadAt(p []byte, off int64) (int, error) {
 	if err := c.o.Request(off, len(p)); err != nil {
 		return 0, err
 	}
-	return c.o.file.ReadAt(p, off)
+	return c.o.ReadAt(p, off)
 }
 
 func (c *CachedObject) Seek(offset int64, whence int) (int64, error) {
@@ -27,7 +33,7 @@ func (c *CachedObject) Seek(offset int64, whence int) (int64, error) {
 	case 1:
 		c.pos += offset
 	case 2:
-		c.pos = c.o.size + offset
+		c.pos = c.o.Size() + offset
 	default:
 		c.pos = 0
 		return 0, UnknownWhence(whence)
@@ -46,12 +52,12 @@ func (c *CachedObject) WriterTo(w io.Writer) (int64, error) {
 		n    int
 	)
 	buf := make([]byte, 32*1024)
-	for c.pos < c.o.size {
+	for c.pos < c.o.Size() {
 		err = c.o.Request(c.pos, len(buf))
 		if err != nil {
 			break
 		}
-		n, err = c.o.file.Read(buf)
+		n, err = c.o.ReadAt(buf, c.pos)
 		c.pos += int64(n)
 		_, e := w.Write(buf[:n])
 		if err != nil {

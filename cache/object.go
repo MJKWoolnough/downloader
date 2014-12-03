@@ -45,6 +45,14 @@ func newObject(filename string, r downloader.Downloader) (*object, error) {
 	return o, nil
 }
 
+func (o *object) ReadAt(b []byte, offset int64) (int, error) {
+	return o.file.ReadAt(b, offset)
+}
+
+func (o *object) Size() int64 {
+	return o.size
+}
+
 func (o *object) Request(start int64, length int) error {
 	req := request{
 		startChunk: uint(start / chunkSize),
