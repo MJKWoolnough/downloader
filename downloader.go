@@ -25,7 +25,7 @@ type Request struct {
 }
 
 type Downloader interface {
-	NewReadCloser(int64, int64) (io.ReadCloser, error)
+	NewReadCloser(start int64, length int64) (io.ReadCloser, error)
 	Length() int64
 }
 

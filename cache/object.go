@@ -162,7 +162,7 @@ func (o *object) download(ctx *context, start uint) {
 		}
 	}
 
-	rc, err := ctx.NewReadCloser(int64(start*chunkSize), int64(end*chunkSize))
+	rc, err := ctx.NewReadCloser(int64(start*chunkSize), int64((start-end)*chunkSize))
 	if err != nil {
 		ctx.Set(start, 0)
 		return
