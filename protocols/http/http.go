@@ -61,7 +61,7 @@ func (h *HTTP) NewReadCloser(start, length int64) (io.ReadCloser, error) {
 	}
 	expecting := http.StatusOK
 	if start > 0 || length != h.Size {
-		h.Request.Header.Add("Range", "bytes="+strconv.Itoa(int(start))+"-"+strconv.Itoa(int(end)-1))
+		h.Request.Header.Add("Range", "bytes="+strconv.Itoa(int(start))+"-"+strconv.Itoa(int(start+length-1)))
 		defer h.Request.Header.Del("Range")
 		expecting = http.StatusPartialContent
 	}
